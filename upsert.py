@@ -2,6 +2,7 @@ import os
 import mmap
 import struct
 import operator
+import heapq
 from functools import partial
 from itertools import islice, groupby
 
@@ -32,7 +33,7 @@ def names2rows(dir_fd=-1, names=iter([]), s=struct.Struct("<IIIIiiii"), key=None
   fcnt = sum(1 for _ in clsf)
   iterators = map(partial(map2iter, rowbits=rowbits, s=s), maps)
   merged = heapq.merge(*iterators, key=key)
-  for row in merged: yield merged
+  for row in merged: yield row
   clsm = map(operator.methodcaller("close"), maps)
   mcnt = sum(1 for _ in clsm)
   pass

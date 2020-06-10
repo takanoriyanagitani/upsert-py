@@ -1,6 +1,8 @@
 import unittest
 import os
 import struct
+import mmap
+import operator
 from collections import namedtuple
 
 import upsert
@@ -203,3 +205,91 @@ class map2iter(unittest.TestCase):
     ))
 
     self.assertEqual(next(a,None), None)
+
+class names2rows(unittest.TestCase):
+  def test_empty(self): self.assertEqual(None, next(upsert.names2rows(),None))
+  def test_users(self):
+    os.makedirs("./.test/upsert/names2rows/users", exist_ok=True)
+    d = os.open("./.test/upsert/names2rows/users", os.O_DIRECTORY)
+
+    u1a = os.open("./user1.a.dat", os.O_CREAT|os.O_TRUNC|os.O_RDWR, 0o644, dir_fd=d)
+    u1b = os.open("./user1.b.dat", os.O_CREAT|os.O_TRUNC|os.O_RDWR, 0o644, dir_fd=d)
+    u1c = os.open("./user1.c.dat", os.O_CREAT|os.O_TRUNC|os.O_RDWR, 0o644, dir_fd=d)
+
+    for fd in [u1a, u1b, u1c]: os.ftruncate(fd, 32)
+    m1a = mmap.mmap(u1a, 32, mmap.MAP_SHARED, mmap.PROT_WRITE | mmap.PROT_READ)
+    m1b = mmap.mmap(u1b, 32, mmap.MAP_SHARED, mmap.PROT_WRITE | mmap.PROT_READ)
+    m1c = mmap.mmap(u1c, 32, mmap.MAP_SHARED, mmap.PROT_WRITE | mmap.PROT_READ)
+    for fd in [u1a, u1b, u1c]: os.close(fd)
+
+    s = struct.Struct("<16sbbhfd")
+    h = namedtuple("Human", [
+      "name",
+      "flag",
+      "age",
+      "height",
+      "weight",
+      "updated",
+    ])
+
+    m1a[0:32] = s.pack(*h(
+      name=b"0123456789abcdef",
+      flag=0,
+      age=34,
+      height=1750,
+      weight=65.125,
+      updated=1591755942.125,
+    ))
+    m1b[0:32] = s.pack(*h(
+      name=b"0123456789abcdef",
+      flag=0,
+      age=34,
+      height=1750,
+      weight=64.125,
+      updated=1591755949.125,
+    ))
+    m1c[0:32] = s.pack(*h(
+      name=b"0123456789abcdef",
+      flag=0,
+      age=34,
+      height=1750,
+      weight=63.125,
+      updated=1591755969.125,
+    ))
+
+    for m in [m1a, m1b, m1c]: m.flush()
+    for m in [m1a, m1b, m1c]: m.close()
+
+    names = iter([ "user1.a.dat", "user1.b.dat", "user1.c.dat" ])
+
+    a = upsert.names2rows(d, names, s=s, key=operator.itemgetter(0))
+
+    self.assertEqual(next(a), h(
+      name=b"0123456789abcdef",
+      flag=0,
+      age=34,
+      height=1750,
+      weight=65.125,
+      updated=1591755942.125,
+    ))
+    self.assertEqual(next(a), h(
+      name=b"0123456789abcdef",
+      flag=0,
+      age=34,
+      height=1750,
+      weight=64.125,
+      updated=1591755949.125,
+    ))
+    self.assertEqual(next(a), h(
+      name=b"0123456789abcdef",
+      flag=0,
+      age=34,
+      height=1750,
+      weight=63.125,
+      updated=1591755969.125,
+    ))
+
+    self.assertEqual(next(a,None), None)
+
+    os.close(d)
+    pass
