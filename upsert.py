@@ -3,8 +3,9 @@ import mmap
 import struct
 import operator
 import heapq
-from functools import partial
-from itertools import islice, groupby
+import sys
+from functools import partial, reduce
+from itertools import islice, groupby, chain
 
 def fd2rows(fd=-1, rowbits=5, s=struct.Struct("<IIIIiiii")):
   size = os.fstat(fd).st_size
@@ -38,28 +39,34 @@ def names2rows(dir_fd=-1, names=iter([]), s=struct.Struct("<IIIIiiii"), key=None
   mcnt = sum(1 for _ in clsm)
   pass
 
-def upsert(
+def tup2write(t=tuple(), w=sys.stdout.write, s=struct.Struct("<QQqq"), buf=bytearray(bytes(32))):
+  s.pack_into(*tuple(chain(
+    (buf, 0),
+    t,
+  )))
+  w(buf)
+
+def sub(
   old_fd=-1,
   new_fd=-1,
   request_dir=-1,
   request_names=iter([]),
-  fmt="<IIIIiiii",
+  s=struct.Struct("<QQqq"),
   key=None,
   rowbits=5,
   rdc=None,
   alt=None,
 ):
-  s = struct.Struct(fmt)
   rows_old = fd2rows(old_fd, rowbits, s)
   rows_new = names2rows(request_dir, request_names, s, key, rowbits)
   merged = heapq.merge(*[rows_old, rows_new], key=key)
   grouped = groupby(merged, key=key)
   reduced = map(lambda g: reduce(rdc, g[1], alt), grouped)
-  with os.fdopen(fd, "wb") as f:
+  buf = bytearray(bytes(1 << rowbits))
+  with os.fdopen(new_fd, "wb") as f:
     w = f.write
-    writes = map(partial(tup2write, w=w), reduced)
+    writes = map(partial(tup2write, w=w, s=s, buf=buf), reduced)
     wcnt = sum(1 for _ in writes)
     f.flush()
     os.fdatasync(f.fileno())
     return os.dup(f.fileno())
-  pass

@@ -358,3 +358,107 @@ class names2rows(unittest.TestCase):
 
     os.close(d)
     pass
+
+class sub(unittest.TestCase):
+  def test_user(self):
+    os.makedirs("./.test/upsert/sub/user/target",  exist_ok=True)
+    os.makedirs("./.test/upsert/sub/user/request", exist_ok=True)
+
+    dt = os.open("./.test/upsert/sub/user/target",  os.O_DIRECTORY)
+    dr = os.open("./.test/upsert/sub/user/request", os.O_DIRECTORY)
+
+    s = struct.Struct("<16sBBHHHd")
+    User = namedtuple("User", (
+      "device",
+      "flag",
+      "years",
+      "width",
+      "height",
+      "depth",
+      "updated",
+    ))
+
+    old = os.open("user1.dat", os.O_CREAT|os.O_TRUNC|os.O_WRONLY, 0o644, dir_fd=dt)
+    with os.fdopen(old, "wb") as f:
+      f.write(s.pack(*User(
+        device=b"0123456789abcdef",
+        flag=0,
+        years=0,
+        height=6220,
+        width=3060,
+        depth=320,
+        updated=1591755942.375,
+      )))
+      f.write(s.pack(*User(
+        device=b"1123456789abcdef",
+        flag=0,
+        years=1,
+        height=6220,
+        width=3060,
+        depth=320,
+        updated=1592755942.375,
+      )))
+      pass
+
+    neo = os.open("user1.dat.temp", os.O_CREAT|os.O_TRUNC|os.O_WRONLY, 0o644, dir_fd=dt)
+
+    key = operator.itemgetter(0)
+
+    def rdc(o, n):
+      oflag = o and o[1] or 0
+      nflag = n[1]
+      oupd  = o and o[6] or 0
+      nupd  = n[6]
+      ko = (oflag, oupd)
+      kn = (nflag, nupd)
+      return n if ko < kn else o
+
+    alt = None
+
+    old = os.open("user1.dat", os.O_RDONLY, dir_fd=dt)
+
+    a = upsert.sub(
+      old,
+      neo,
+      dr,
+      iter([]),
+      s=s,
+      key=key,
+      rdc=rdc,
+      alt=alt,
+    )
+
+    os.fdatasync(a)
+    os.close(a)
+    os.rename("user1.dat.temp", "uesr1.dat", src_dir_fd=dt, dst_dir_fd=dt)
+
+    ud = os.open("user1.dat", os.O_RDONLY, dir_fd=dt)
+    m = mmap.mmap(ud, 64, mmap.MAP_PRIVATE, mmap.PROT_READ)
+    os.close(ud)
+    i = s.iter_unpack(m)
+
+    self.assertEqual(next(i), User(
+      device=b"0123456789abcdef",
+      flag=0,
+      years=0,
+      height=6220,
+      width=3060,
+      depth=320,
+      updated=1591755942.375,
+    ))
+    self.assertEqual(next(i), User(
+      device=b"1123456789abcdef",
+      flag=0,
+      years=1,
+      height=6220,
+      width=3060,
+      depth=320,
+      updated=1592755942.375,
+    ))
+
+    self.assertEqual(next(i,None), None)
+
+    m.close()
+
+    for d in [dt, dr]: os.close(d)
+    pass
