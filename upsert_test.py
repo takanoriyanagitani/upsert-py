@@ -293,3 +293,68 @@ class names2rows(unittest.TestCase):
 
     os.close(d)
     pass
+  def test_single(self):
+    os.makedirs("./.test/upsert/names2rows/single", exist_ok=True)
+    d = os.open("./.test/upsert/names2rows/single", os.O_DIRECTORY)
+
+    fd = os.open("./single.dat", os.O_CREAT|os.O_TRUNC|os.O_RDWR, 0o644, dir_fd=d)
+
+    os.ftruncate(fd, 32*2)
+    m = mmap.mmap(fd, 32*2, mmap.MAP_SHARED, mmap.PROT_WRITE | mmap.PROT_READ)
+    os.close(fd)
+
+    s = struct.Struct("<16sbbhfd")
+    h = namedtuple("Human", [
+      "name",
+      "flag",
+      "age",
+      "height",
+      "weight",
+      "updated",
+    ])
+
+    m[0:32] = s.pack(*h(
+      name=b"0123456789abcdef",
+      flag=0,
+      age=34,
+      height=1750,
+      weight=63.125,
+      updated=1591755969.125,
+    ))
+    m[32:64] = s.pack(*h(
+      name=b"0123456789abcdef",
+      flag=0,
+      age=34,
+      height=1750,
+      weight=65.125,
+      updated=1592755969.125,
+    ))
+
+    m.flush()
+    m.close()
+
+    names = iter(["single.dat"])
+
+    a = upsert.names2rows(d, names, s=s, key=operator.itemgetter(0))
+
+    self.assertEqual(next(a), h(
+      name=b"0123456789abcdef",
+      flag=0,
+      age=34,
+      height=1750,
+      weight=63.125,
+      updated=1591755969.125,
+    ))
+    self.assertEqual(next(a), h(
+      name=b"0123456789abcdef",
+      flag=0,
+      age=34,
+      height=1750,
+      weight=65.125,
+      updated=1592755969.125,
+    ))
+
+    self.assertEqual(next(a,None), None)
+
+    os.close(d)
+    pass
