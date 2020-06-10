@@ -21,10 +21,10 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-    - name: Set up Python ${{ pv }}
+    - name: Set up Python ${{ matrix.pv }}
       uses: actions/setup-python@v2
       with:
-        python-version: ${{ pv }}
+        python-version: ${{ matrix.pv }}
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
