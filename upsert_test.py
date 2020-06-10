@@ -367,6 +367,17 @@ class sub(unittest.TestCase):
     dt = os.open("./.test/upsert/sub/user/target",  os.O_DIRECTORY)
     dr = os.open("./.test/upsert/sub/user/request", os.O_DIRECTORY)
 
+    r1 = os.open("user1.req.0.dat", os.O_CREAT|os.O_TRUNC|os.O_WRONLY, 0o644, dir_fd=dr)
+    r2 = os.open("user1.req.1.dat", os.O_CREAT|os.O_TRUNC|os.O_WRONLY, 0o644, dir_fd=dr)
+
+    request_names = filter(
+      lambda name: name in [
+        "user1.req.0.dat",
+        "user1.req.1.dat",
+      ],
+      os.listdir(dr)
+    )
+
     s = struct.Struct("<16sBBHHHd")
     User = namedtuple("User", (
       "device",
@@ -377,6 +388,37 @@ class sub(unittest.TestCase):
       "depth",
       "updated",
     ))
+
+    with os.fdopen(r1, "wb") as f:
+      f.write(s.pack(*User(
+        device=b"0123456789abcdef",
+        flag=1,
+        years=0,
+        height=634,
+        width=634,
+        depth=634,
+        updated=1591755942.375,
+      )))
+      f.write(s.pack(*User(
+        device=b"2123456789abcdef",
+        flag=1,
+        years=0,
+        height=333,
+        width=333,
+        depth=333,
+        updated=1591755942.375,
+      )))
+    with os.fdopen(r2, "wb") as f:
+      f.write(s.pack(*User(
+        device=b"3123456789abcdef",
+        flag=1,
+        years=0,
+        height=3776,
+        width=3776,
+        depth=3776,
+        updated=1591755942.375,
+      )))
+
 
     old = os.open("user1.dat", os.O_CREAT|os.O_TRUNC|os.O_WRONLY, 0o644, dir_fd=dt)
     with os.fdopen(old, "wb") as f:
@@ -411,6 +453,7 @@ class sub(unittest.TestCase):
       nupd  = n[6]
       ko = (oflag, oupd)
       kn = (nflag, nupd)
+      print(ko, kn)
       return n if ko < kn else o
 
     alt = None
@@ -421,19 +464,29 @@ class sub(unittest.TestCase):
       old,
       neo,
       dr,
-      iter([]),
+      request_names,
       s=s,
       key=key,
       rdc=rdc,
       alt=alt,
+      mfunc=lambda t: (
+        t[0],
+        0,
+        t[2],
+        t[3],
+        t[4],
+        t[5],
+        t[6],
+      ),
     )
 
     os.fdatasync(a)
     os.close(a)
-    os.rename("user1.dat.temp", "uesr1.dat", src_dir_fd=dt, dst_dir_fd=dt)
+    os.rename("user1.dat.temp", "user1.dat", src_dir_fd=dt, dst_dir_fd=dt)
 
     ud = os.open("user1.dat", os.O_RDONLY, dir_fd=dt)
-    m = mmap.mmap(ud, 64, mmap.MAP_PRIVATE, mmap.PROT_READ)
+    self.assertEqual(128, os.fstat(ud).st_size)
+    m = mmap.mmap(ud, 128, mmap.MAP_PRIVATE, mmap.PROT_READ)
     os.close(ud)
     i = s.iter_unpack(m)
 
@@ -441,9 +494,9 @@ class sub(unittest.TestCase):
       device=b"0123456789abcdef",
       flag=0,
       years=0,
-      height=6220,
-      width=3060,
-      depth=320,
+      height=634,
+      width=634,
+      depth=634,
       updated=1591755942.375,
     ))
     self.assertEqual(next(i), User(
@@ -454,6 +507,24 @@ class sub(unittest.TestCase):
       width=3060,
       depth=320,
       updated=1592755942.375,
+    ))
+    self.assertEqual(next(i), User(
+      device=b"2123456789abcdef",
+      flag=0,
+      years=0,
+      height=333,
+      width=333,
+      depth=333,
+      updated=1591755942.375,
+    ))
+    self.assertEqual(next(i), User(
+      device=b"3123456789abcdef",
+      flag=0,
+      years=0,
+      height=3776,
+      width=3776,
+      depth=3776,
+      updated=1591755942.375,
     ))
 
     self.assertEqual(next(i,None), None)

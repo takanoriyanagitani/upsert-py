@@ -56,16 +56,18 @@ def sub(
   rowbits=5,
   rdc=None,
   alt=None,
+  mfunc=None,
 ):
   rows_old = fd2rows(old_fd, rowbits, s)
   rows_new = names2rows(request_dir, request_names, s, key, rowbits)
   merged = heapq.merge(*[rows_old, rows_new], key=key)
   grouped = groupby(merged, key=key)
   reduced = map(lambda g: reduce(rdc, g[1], alt), grouped)
+  mapped  = map(mfunc, reduced)
   buf = bytearray(bytes(1 << rowbits))
   with os.fdopen(new_fd, "wb") as f:
     w = f.write
-    writes = map(partial(tup2write, w=w, s=s, buf=buf), reduced)
+    writes = map(partial(tup2write, w=w, s=s, buf=buf), mapped)
     wcnt = sum(1 for _ in writes)
     f.flush()
     os.fdatasync(f.fileno())
